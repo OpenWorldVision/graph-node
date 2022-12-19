@@ -2,7 +2,7 @@ version: "3"
 services:
   graph-node:
     image: graphprotocol/graph-node
-    command: tail -f /dev/null
+    tty: true
     ports:
       - "8000:8000"
       - "8001:8001"
@@ -24,14 +24,14 @@ services:
       GRAPH_LOG: info
   ipfs:
     image: ipfs/go-ipfs:v0.10.0
-    command: tail -f /dev/null
+    tty: true
     ports:
       - "5001:5001"
     volumes:
       - ./data/ipfs:/data/ipfs
   postgres:
     image: postgres
-    command: tail -f /dev/null
+    tty: true
     ports:
       - "6432:6432"
     command: ["postgres", "-cshared_preload_libraries=pg_stat_statements"]
