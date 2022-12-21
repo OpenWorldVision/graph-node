@@ -22,7 +22,6 @@ services:
       ipfs: "ipfs:5001"
       ethereum: "mainnet:https://data-seed-prebsc-1-s1.binance.org:8545"
       GRAPH_LOG: info
-      GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER: "25038737"
   ipfs:
     image: ipfs/go-ipfs:v0.10.0
     tty: true
