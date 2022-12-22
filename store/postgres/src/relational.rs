@@ -14,6 +14,7 @@ mod ddl_tests;
 #[cfg(test)]
 mod query_tests;
 
+pub(crate) mod index;
 mod prune;
 
 use diesel::{connection::SimpleConnection, Connection};
@@ -23,7 +24,7 @@ use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
-use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
+use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
@@ -49,9 +50,8 @@ use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYP
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
-    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
-    EntityFilter, EntityOperation, EntityOrder, EntityRange, Logger, QueryExecutionError,
-    StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
+    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
+    QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -631,54 +631,60 @@ impl Layout {
         &self,
         logger: &Logger,
         conn: &PgConnection,
-        collection: EntityCollection,
-        filter: Option<EntityFilter>,
-        order: EntityOrder,
-        range: EntityRange,
-        block: BlockNumber,
-        query_id: Option<String>,
+        query: EntityQuery,
     ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
         fn log_query_timing(
             logger: &Logger,
             query: &FilterQuery,
             elapsed: Duration,
             entity_count: usize,
+            trace: bool,
         ) -> Trace {
             // 20kB
             const MAXLEN: usize = 20_480;
 
-            if !ENV_VARS.log_sql_timing() {
+            if !ENV_VARS.log_sql_timing() && !trace {
                 return Trace::None;
             }
 
             let mut text = debug_query(&query).to_string().replace("\n", "\t");
-            let trace = Trace::query(&text, elapsed, entity_count);
 
-            // If the query + bind variables is more than MAXLEN, truncate it;
-            // this will happen when queries have very large bind variables
-            // (e.g., long arrays of string ids)
-            if text.len() > MAXLEN {
-                text.truncate(MAXLEN);
-                text.push_str(" ...");
+            let trace = if trace {
+                Trace::query(&text, elapsed, entity_count)
+            } else {
+                Trace::None
+            };
+
+            if ENV_VARS.log_sql_timing() {
+                // If the query + bind variables is more than MAXLEN, truncate it;
+                // this will happen when queries have very large bind variables
+                // (e.g., long arrays of string ids)
+                if text.len() > MAXLEN {
+                    text.truncate(MAXLEN);
+                    text.push_str(" ...");
+                }
+                info!(
+                    logger,
+                    "Query timing (SQL)";
+                    "query" => text,
+                    "time_ms" => elapsed.as_millis(),
+                    "entity_count" => entity_count
+                );
             }
-            info!(
-                logger,
-                "Query timing (SQL)";
-                "query" => text,
-                "time_ms" => elapsed.as_millis(),
-                "entity_count" => entity_count
-            );
             trace
         }
 
-        let filter_collection = FilterCollection::new(self, collection, filter.as_ref(), block)?;
+        let trace = query.trace;
+
+        let filter_collection =
+            FilterCollection::new(self, query.collection, query.filter.as_ref(), query.block)?;
         let query = FilterQuery::new(
             &filter_collection,
-            filter.as_ref(),
-            order,
-            range,
-            block,
-            query_id,
+            query.filter.as_ref(),
+            query.order,
+            query.range,
+            query.block,
+            query.query_id,
             &self.site,
         )?;
         let query_clone = query.clone();
@@ -717,7 +723,7 @@ impl Layout {
                     )),
                 }
             })?;
-        let trace = log_query_timing(logger, &query_clone, start.elapsed(), values.len());
+        let trace = log_query_timing(logger, &query_clone, start.elapsed(), values.len(), trace);
 
         let parent_type = filter_collection.parent_type()?.map(ColumnType::from);
         values

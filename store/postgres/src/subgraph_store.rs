@@ -40,7 +40,7 @@ use crate::{
     deployment::SubgraphHealth,
     primary,
     primary::{DeploymentId, Mirror as PrimaryMirror, Site},
-    relational::Layout,
+    relational::{index::Method, Layout},
     writable::WritableStore,
     NotificationSender,
 };
@@ -49,7 +49,7 @@ use crate::{
     detail::DeploymentDetail,
     primary::UnusedDeployment,
 };
-use crate::{fork, relational::SqlName};
+use crate::{fork, relational::index::CreateIndex, relational::SqlName};
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
@@ -1067,7 +1067,7 @@ impl SubgraphStoreInner {
         deployment: &DeploymentLocator,
         entity_name: &str,
         field_names: Vec<String>,
-        index_method: String,
+        index_method: Method,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
         store
@@ -1079,7 +1079,7 @@ impl SubgraphStoreInner {
         &self,
         deployment: &DeploymentLocator,
         entity_name: &str,
-    ) -> Result<Vec<String>, StoreError> {
+    ) -> Result<Vec<CreateIndex>, StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
         store.indexes_for_entity(site, entity_name).await
     }
