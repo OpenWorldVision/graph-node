@@ -23,7 +23,7 @@ ARG TAG_NAME=unknown
 ADD . /graph-node
 
 RUN apt-get update \
-    && apt-get install -y cmake protobuf-compiler && \
+    && apt-get install -y cmake && \
     cd /graph-node && \
     RUSTFLAGS="-g" cargo build --release --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
@@ -85,6 +85,8 @@ ENV GRAPH_NODE_CONFIG ""
 # Disable core dumps; this is useful for query nodes with large caches. Set
 # this to anything to disable coredumps (via 'ulimit -c 0')
 ENV disable_core_dumps ""
+ENV GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER 25000000
+
 
 # HTTP port
 EXPOSE 8000
